@@ -1,0 +1,22 @@
+services:
+  parser-app:
+    build:
+      context: .
+      dockerfile: parser/Dockerfile
+    container_name: parser-app
+    volumes:
+      - .:/app
+    restart: always
+    environment:
+      - PARSER_MODE=continue
+    command: ["sh", "-c", "while true; do python -m parser.main; sleep 24h; done"]
+
+  inviter-app:
+    build:
+      context: .
+      dockerfile: tg_inviter/Dockerfile
+    container_name: inviter-app
+    volumes:
+      - .:/app
+    restart: always
+    command: ["sh", "-c", "while true; do python -m tg_inviter.message_sender; sleep 3h; done"]
