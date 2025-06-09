@@ -14,14 +14,13 @@ from tg_inviter.messages import messages  # словарь сообщений в
 
 load_dotenv()
 
-
 API_ID = os.getenv("API_ID", "")
 API_HASH = os.getenv("API_HASH", "")
 SESSION_NAME = os.getenv("SESSION_NAME", "")
 CHANNEL_URL = os.getenv("CHANNEL_URL", "")
 USERS_CSV = os.getenv("USERS_CSV", "")
 INVITED_LOG_CSV = os.getenv("INVITED_LOG_CSV", "")
-DATE_FORMAT = os.getenv("DATE_FORMAT", "")
+DATE_FORMAT = os.getenv("DATE_FORMAT", "%Y-%m-%d %H:%M:%S")  # ставим дефолт на всякий
 
 ANCHOR = f'<a href="{CHANNEL_URL}">Тай для своих</a>'
 
@@ -92,15 +91,20 @@ def prepare_message(message_text):
 
 
 async def try_send_message(client, username, msg, idx, total):
-    """Функция для отправки, с обработкой FloodWait и reconnection."""
+    """Функция для отправки, с обработкой FloodWait и TooManyRequests."""
     max_retries = 3
     n_retry = 0
     while n_retry < max_retries:
         try:
-            await client.send_message(entity=username, message=msg, parse_mode="html")
+            await client.send_message(
+                entity=username,
+                message=msg,
+                parse_mode='html'
+            )
             print(f"[{idx+1}/{total}] OK: {username}")
-            return 1, ""
+            return 1, ''
         except FloodWaitError as e:
+            # Стандартный FloodWait
             wait = e.seconds + random.randint(5, 25)
             print(f"[{idx+1}/{total}] FloodWait: спим {wait} сек")
             time.sleep(wait)
@@ -108,14 +112,14 @@ async def try_send_message(client, username, msg, idx, total):
         except Exception as e:
             err_msg = str(e)
             print(f"[{idx+1}/{total}] Ошибка: {username}: {err_msg}")
-            # SAFETY: Не повторяем если приватность/блок/невзаимный контакт
-            if any(err in err_msg.lower() for err in DO_NOT_REPEAT_ERRORS):
-                return 0, err_msg
+            # Новый блок: Too many requests
+            if "Too many requests" in err_msg or "TOO_MANY_REQUESTS" in err_msg:
+                print("== Лимит Telegram достигнут. Прерываем рассылку до следующего раза ==")
+                # Сигнал к завершению всего запуска!
+                return 0, 'Too many requests, stop batch'
             # Повторяем если "Cannot send requests while disconnected"
             if "disconnected" in err_msg.lower():
-                print(
-                    f"Попытка повторить отправку для {username} (отключено от сети)..."
-                )
+                print(f"Попытка повторить отправку для {username} (отключено от сети)...")
                 time.sleep(random.randint(10, 25))
                 n_retry += 1
                 continue
@@ -191,6 +195,10 @@ async def main():
             invited, error_message = await try_send_message(
                 client, username, msg, idx, len(invite_candidates)
             )
+
+            if error_message == 'Too many requests, stop batch':
+                print("== Telegram API вернул Too Many Requests. Ранняя остановка рассылки. ==")
+                break
 
             if invited == 1:
                 count_sent += 1
