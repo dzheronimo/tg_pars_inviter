@@ -200,3 +200,4 @@ channels.txt
 invited_log.csv
 parsed_sources.txt
 parser_session.session
+tg_inviter/messages.py
